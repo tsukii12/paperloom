@@ -151,6 +151,11 @@ paperloom/
 - ⏳ **首次转换较慢** —— 要下载解析模型(Docling 约数百 MB)。
 - 🖨️ **导出 PDF 耗时** —— 图文较多的论文约 25–60 秒(瓶颈是无头浏览器排版本身)。
 
+## 👥 贡献者
+
+- **Tsuki** —— 项目发起、需求定义、测试与验收
+- **Claude** (Anthropic) —— 架构设计、前后端实现、桌面打包与问题排查
+
 ## 🙏 致谢
 
 - [Docling](https://github.com/docling-project/docling) / [MinerU](https://github.com/opendatalab/MinerU) —— PDF 解析

@@ -166,6 +166,11 @@ paperloom/
 - 🖨️ **PDF export takes a while** — roughly 25–60 seconds for a figure-heavy paper; the bottleneck is
   the headless browser layout itself.
 
+## 👥 Contributors
+
+- **Tsuki** — project inception, requirements, testing and acceptance
+- **Claude** (Anthropic) — architecture, frontend and backend implementation, desktop packaging and debugging
+
 ## 🙏 Credits
 
 - [Docling](https://github.com/docling-project/docling) / [MinerU](https://github.com/opendatalab/MinerU) — PDF parsing
