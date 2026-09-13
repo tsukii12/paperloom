@@ -1,0 +1,11 @@
+# 核心后端
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+httpx>=0.27
+truststore>=0.9          # 使用系统证书库(兼容本机 TLS 拦截/企业代理)
+
+# PDF 解析引擎(二选一即可运行;都装可在界面切换)
+docling>=2.20
+# MinerU 体积较大(torch + 模型约 1.5GB),按需安装:
+# mineru[pipeline]>=2.1

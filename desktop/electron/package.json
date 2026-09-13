@@ -1,0 +1,74 @@
+{
+  "name": "paperloom-desktop",
+  "productName": "PaperLoom",
+  "version": "0.8.0",
+  "description": "PaperLoom 织译 — 论文 PDF 转 HTML 并翻译,双栏对照阅读",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.paperloom.desktop",
+    "productName": "PaperLoom",
+    "directories": {
+      "output": "../dist-electron",
+      "buildResources": "."
+    },
+    "files": [
+      "main.js",
+      "package.json",
+      "paperloom.ico"
+    ],
+    "icon": "paperloom.ico",
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PaperLoom"
+    },
+    "extraResources": [
+      {
+        "from": "../../.venv-base/Lib/site-packages",
+        "to": "site-packages"
+      },
+      {
+        "from": "C:/Users/Tsuki/.local/bin/uv.exe",
+        "to": "uv.exe"
+      },
+      {
+        "from": "../vc-runtime",
+        "to": "vc-runtime"
+      },
+      {
+        "from": "C:/Users/Tsuki/AppData/Roaming/uv/python/cpython-3.12.13-windows-x86_64-none",
+        "to": "runtime/python"
+      },
+      {
+        "from": "../../server",
+        "to": "paperloom/server",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
+      },
+      {
+        "from": "../../web/dist",
+        "to": "paperloom/web/dist"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3"
+  }
+}

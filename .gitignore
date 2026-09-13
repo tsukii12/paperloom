@@ -1,0 +1,26 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+.venv/
+.venv-base/
+
+# ── Node / 前端 ──
+node_modules/
+web/dist/
+
+# ── 运行时数据 ──
+data/
+output/
+
+# ── 打包产物 ──
+desktop/dist-electron/
+build/PaperLoom/
+*.exe
+*.7z
+
+# ── 编辑器 / 系统 ──
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <style>
+    :root { --pl-ink: #0e7a6d; }
+    @media (prefers-color-scheme: dark) { :root { --pl-ink: #3fbfae; } }
+  </style>
+  <!-- 纸页层叠 + 顶层一道织线:呼应「织译」,无底板,深浅色主题各用一档色 -->
+  <g fill="none" stroke="var(--pl-ink)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 5 26.6 11 16 17 5.4 11Z" fill="var(--pl-ink)" fill-opacity=".16" />
+    <path d="M5.4 16.1 16 22.1l10.6-6" />
+    <path d="M5.4 21.2 16 27.2l10.6-6" />
+  </g>
+</svg>
