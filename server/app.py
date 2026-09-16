@@ -125,7 +125,9 @@ async def lifespan(app: FastAPI):
     patch_torch_dlls()   # 顺带把 VC++ 运行库补进已装引擎(修旧系统的 WinError 1114)
     # 服务重启会中断后台线程:把卡在执行态的文档恢复为可继续的状态
     for d in db.list_docs():
-        if d["status"] == "converting":
+        if d["status"] == "queued" and "翻译" in (d.get("stage") or ""):
+            db.update_doc(d["id"], status="cancelled", stage="服务重启,排队翻译已取消")
+        elif d["status"] in ("queued", "converting"):
             db.update_doc(d["id"], status="failed", stage="失败",
                           error="服务重启,转换被中断,请重试")
         elif d["status"] == "translating":
@@ -221,9 +223,33 @@ def get_doc(doc_id: str):
 
 @app.patch("/api/docs/{doc_id}")
 def patch_doc(doc_id: str, body: dict):
-    if not db.get_doc(doc_id):
+    current = db.get_doc(doc_id)
+    if not current:
         raise HTTPException(404, "文档不存在")
     fields = {}
+    if body and "filename" in body:
+        filename = str(body["filename"] or "").strip()
+        if not filename.lower().endswith(".pdf"):
+            filename += ".pdf"
+        if (
+            not filename[:-4].strip()
+            or len(filename) > 240
+            or any(ch in filename for ch in '<>:"/\\|?*')
+            or any(ord(ch) < 32 for ch in filename)
+        ):
+            raise HTTPException(400, "文件名无效")
+        conflict = next(
+            (
+                d for d in db.list_docs()
+                if d["id"] != doc_id
+                and (d.get("folder") or "") == (current.get("folder") or "")
+                and d["filename"].casefold() == filename.casefold()
+            ),
+            None,
+        )
+        if conflict:
+            raise HTTPException(409, "当前文件夹中已存在同名文档")
+        fields["filename"] = filename
     if body and "folder" in body:
         fields["folder"] = _clean_path(body["folder"])
         db.ensure_folders(fields["folder"])
@@ -382,9 +408,12 @@ def add_annotation(doc_id: str, body: dict):
     color = body.get("color", "yellow")
     if color not in ("yellow", "green", "blue", "pink"):
         raise HTTPException(400, "color 应为 yellow|green|blue|pink")
+    side = body.get("side", "origin")
+    if side not in ("origin", "translated"):
+        raise HTTPException(400, "side 应为 origin|translated")
     ann = db.add_annotation(
         uuid.uuid4().hex[:10], doc_id, block_id, start, end,
-        kind, color, str(body.get("note", "") or ""),
+        kind, color, str(body.get("note", "") or ""), side,
     )
     db.touch_doc(doc_id)
     return ann
@@ -632,9 +661,30 @@ def write_settings(patch: dict):
     return save_settings(patch or {})
 
 
+def _message_text(message: dict) -> str:
+    """兼容不同 OpenAI-compatible 服务的文本返回格式。"""
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        if parts:
+            return "".join(parts).strip()
+    # 部分推理模型把短回复放在 reasoning_content，而 content 为空。
+    reasoning = message.get("reasoning_content")
+    return reasoning.strip() if isinstance(reasoning, str) else ""
+
+
 @app.post("/api/settings/test")
-async def test_settings():
+async def test_settings(body: dict | None = None):
+    # 测试页面当前填写的值，不要求用户先保存。
     s = get_settings()
+    for key in ("base_url", "api_key", "model"):
+        if body and body.get(key) is not None:
+            s[key] = str(body[key]).strip()
     if not s.get("api_key"):
         return {"ok": False, "message": "请先填写 API Key"}
     try:
@@ -645,12 +695,15 @@ async def test_settings():
                 json={
                     "model": s["model"],
                     "messages": [{"role": "user", "content": "请只回复:OK"}],
-                    "max_tokens": 10,
+                    "max_tokens": 64,
                 },
             )
         r.raise_for_status()
-        text = r.json()["choices"][0]["message"]["content"]
-        return {"ok": True, "message": f"连接成功,模型回复:{text.strip()[:50]}"}
+        message = r.json()["choices"][0]["message"]
+        reply = _message_text(message)
+        if not reply:
+            return {"ok": False, "message": "接口请求成功，但模型返回了空内容，请检查模型名称或服务商兼容性"}
+        return {"ok": True, "message": f"连接成功，模型回复：{reply[:80]}"}
     except Exception as e:
         detail = getattr(e, "response", None)
         msg = detail.text[:200] if detail is not None and hasattr(detail, "text") else str(e)
@@ -680,9 +733,18 @@ if WEB_DIST.is_dir():
     def spa(full_path: str):
         # SPA 回退:静态文件存在则直接返回,否则交给前端路由(如 /reader/:id)
         candidate = (WEB_DIST / full_path).resolve()
-        if full_path and str(candidate).startswith(str(WEB_DIST.resolve())) and candidate.is_file():
+        if (
+            full_path
+            and candidate.name != "index.html"
+            and str(candidate).startswith(str(WEB_DIST.resolve()))
+            and candidate.is_file()
+        ):
             return FileResponse(candidate)
-        return FileResponse(WEB_DIST / "index.html")
+        # 入口不能走浏览器启发式缓存，否则重新构建后仍会引用旧 hash 的 JS/CSS。
+        return FileResponse(
+            WEB_DIST / "index.html",
+            headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+        )
 else:  # 开发模式下前端由 Vite 独立服务
     @app.get("/")
     def index():

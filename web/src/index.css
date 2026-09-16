@@ -52,7 +52,7 @@
   --ease-dur: 240ms;
 
   /* 框架宽度(侧栏) */
-  --pl-sidebar: 228px;
+  --pl-sidebar: 260px;
 
   /* 界面缩放系数:由设置页写入。样式表里的视口单位要除掉它,
      否则 zoom 之后再算 100dvh 会偏大(元素比屏幕还高)。 */
@@ -86,12 +86,6 @@
   --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.62);
 }
 
-/* 侧栏在 lg 以下收为窄栏 */
-@media (max-width: 1024px) {
-  :root {
-    --pl-sidebar: 68px;
-  }
-}
 @media (max-width: 767px) {
   :root {
     --pl-sidebar: 0px;
@@ -139,6 +133,59 @@
 .left-sb {
   left: var(--pl-sidebar);
 }
+.w-sb,
+.ml-sb,
+.left-sb {
+  transition-duration: 220ms;
+  transition-timing-function: var(--ease);
+}
+.w-sb {
+  transition-property: width;
+}
+.ml-sb {
+  transition-property: margin-left;
+}
+.left-sb {
+  transition-property: left;
+}
+@media (min-width: 768px) {
+  .pl-shell.is-sidebar-collapsed {
+    --pl-sidebar: 52px;
+  }
+  .pl-shell.is-sidebar-collapsed .nav-label {
+    display: none;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-nav-item,
+  .pl-shell.is-sidebar-collapsed .sidebar-tab {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-head {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-identity {
+    display: none;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-toggle {
+    width: 36px;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-tabs {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-tab-main {
+    flex: none;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-theme-wide {
+    display: none;
+  }
+  .pl-shell.is-sidebar-collapsed .sidebar-theme-compact {
+    display: flex;
+  }
+}
 .bg-grain {
   background-color: var(--bg);
   background-image: var(--grain-a), var(--grain-b);
@@ -148,13 +195,6 @@
   background-color: color-mix(in srgb, var(--bg) 92%, var(--surface));
   background-image: var(--grain-a), var(--grain-b);
   background-repeat: no-repeat;
-}
-
-/* 侧栏收窄为图标栏时隐藏文字标签 */
-@media (max-width: 1024px) {
-  .nav-label {
-    display: none;
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -529,12 +569,15 @@ select {
 .ink-bar-btn {
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 5px;
   padding: 6px 9px;
   border-radius: 999px;
   border: 0;
   background: transparent;
   font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
   color: inherit;
   cursor: pointer;
   transition: background-color 0.16s var(--ease);

@@ -13,11 +13,21 @@ and read the original and the translation side by side.
 
 [中文](README.md) · [English](README.en.md)
 
+[![Release](https://img.shields.io/github/v/release/tsukii12/paperloom?label=release)](https://github.com/tsukii12/paperloom/releases/latest)
+
 <img src="docs/screenshot-reader.png" alt="PaperLoom reader: side-by-side view with highlights" width="880" />
 
 </div>
 
 ---
+
+## 🆕 What's New in 0.8.5
+
+- Highlights, underlines, and notes now work on both source and translated text; the selection toolbar stays on one line
+- The library now has a collapsible sidebar, floating controls, pagination, and document renaming
+- Multi-document conversion and translation use an explicit queued state, with more reliable live refresh
+- Model connection tests use the current unsaved form values and correctly reject empty or incompatible responses
+- The About page now shows the version and a link to the GitHub repository; current version: **0.8.5**
 
 ## ✨ Features
 
@@ -35,7 +45,7 @@ and read the original and the translation side by side.
 
 - **Side-by-side view** — blocks aligned row by row, with a hairline down the middle like an open book; toggle original / translation / both
 - **Paper fonts** — choose separate typefaces for CJK and Latin, applied to the paper body only, never to the UI
-- **Annotations** — select text to highlight (4 colors), underline, or attach a note; the side panel lists them all with jump-to-source
+- **Annotations** — select source or translated text to highlight (4 colors), underline, or attach a note; the side panel lists them all with jump-to-source
 - **Selection translate** — select text and hit translate for an instant popup
 - **Image lightbox** — click to zoom, `←` `→` to browse, save with one click
 - **Export** — standalone HTML (single-file) or **Save as PDF** (printed via headless Edge/Chrome:
@@ -44,9 +54,9 @@ and read the original and the translation side by side.
 ### 🗂️ Management
 
 - **Library** — file-manager style navigation: double-click to enter folders, breadcrumbs, go up one level,
-  create / rename / move, nested folders, multi-select batch operations, drag-and-drop filing
+  rename / move documents and folders, nested folders, pagination, multi-select batch operations, drag-and-drop filing
 - **Search** — searches across every folder, results show their folder path as a clickable chip
-- **Appearance** — light / dark / follow-system; five accent colors plus a custom color picker; UI scale 90%–125%
+- **Appearance** — collapsible sidebar; light / dark / follow-system; five accent colors plus a custom color picker; UI scale 90%–125%
 - **Download sources** — engine packages from a PyPI mirror (Tsinghua by default), models from
   hf-mirror / ModelScope / HuggingFace
 - **Processing log** — click the status pill to see the full conversion / translation log
@@ -169,7 +179,7 @@ paperloom/
 ## 👥 Contributors
 
 - **Tsuki** — project inception, requirements, testing and acceptance
-- **Claude** (Anthropic) — architecture, frontend and backend implementation, desktop packaging and debugging
+- **Codex** (OpenAI) — architecture, frontend and backend implementation, desktop packaging and debugging
 
 ## 🙏 Credits
 

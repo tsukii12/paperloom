@@ -9,12 +9,35 @@ const ITEMS: { t: Theme; icon: typeof Sun; label: string }[] = [
 ]
 
 /** 主题三段切换:浅色 / 深色 / 跟随系统(存 localStorage.pl-theme) */
-export default function ThemeSwitch({ labels = false }: { labels?: boolean }) {
+export default function ThemeSwitch({
+  labels = false,
+  compact = false,
+}: {
+  labels?: boolean
+  compact?: boolean
+}) {
   const [theme, setTheme] = useState<Theme>(() => getTheme())
 
   const pick = (t: Theme) => {
     setTheme(t)
     applyTheme(t)
+  }
+
+  if (compact) {
+    const current = ITEMS.find((item) => item.t === theme) ?? ITEMS[2]
+    const Icon = current.icon
+    const next = ITEMS[(ITEMS.findIndex((item) => item.t === theme) + 1) % ITEMS.length]
+    return (
+      <button
+        type="button"
+        title={`${current.label} · 点击切换为${next.label}`}
+        aria-label={`当前主题：${current.label}，点击切换为${next.label}`}
+        onClick={() => pick(next.t)}
+        className="pl-iconbtn h-9 w-9 rounded-[10px] border border-line bg-hover"
+      >
+        <Icon className="h-4 w-4" />
+      </button>
+    )
   }
 
   return (

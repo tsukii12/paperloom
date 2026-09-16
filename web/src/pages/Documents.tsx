@@ -5,6 +5,7 @@ import {
   BookOpen,
   Check,
   CircleStop,
+  ChevronLeft,
   ChevronRight,
   FileText,
   Folder,
@@ -43,6 +44,7 @@ import type { DocMeta, DocStatus } from '../types'
 
 const STATUS_LABEL: Record<DocStatus, string> = {
   uploaded: '待转换',
+  queued: '排队中',
   converting: '转换中',
   ready: '待翻译',
   translating: '翻译中',
@@ -53,6 +55,7 @@ const STATUS_LABEL: Record<DocStatus, string> = {
 
 const STATUS_CLS: Record<DocStatus, string> = {
   uploaded: 'bg-hover text-ink2',
+  queued: 'bg-amber-500/10 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
   converting: 'bg-blue-500/10 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400',
   ready: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
   translating: 'bg-violet-500/10 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400',
@@ -61,7 +64,8 @@ const STATUS_CLS: Record<DocStatus, string> = {
   failed: 'bg-red-500/10 text-red-600 dark:bg-red-500/15 dark:text-red-400',
 }
 
-const ACTIVE: DocStatus[] = ['converting', 'translating']
+const ACTIVE: DocStatus[] = ['queued', 'converting', 'translating']
+const PAGE_SIZE = 20
 
 const SORT_OPTIONS = [
   { value: 'time-desc', label: '修改时间 · 新→旧' },
@@ -159,10 +163,14 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
   const [renaming, setRenaming] = useState('')
   const [renameDraft, setRenameDraft] = useState('')
   const renamingRef = useRef('')
+  const [renamingDoc, setRenamingDoc] = useState('')
+  const [docRenameDraft, setDocRenameDraft] = useState('')
+  const renamingDocRef = useRef('')
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [createErr, setCreateErr] = useState('')
   const [moveOpen, setMoveOpen] = useState(false)
+  const [page, setPage] = useState(1)
 
   const [tagEdit, setTagEdit] = useState<DocMeta | null>(null)
   const [logId, setLogId] = useState('')
@@ -175,11 +183,14 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
   const dragDepth = useRef(0)
 
   const fileInput = useRef<HTMLInputElement>(null)
+  const refreshSeq = useRef(0)
   const nav = useNavigate()
 
   const refresh = useCallback(async () => {
+    const seq = ++refreshSeq.current
     try {
       const [d, f] = await Promise.all([api.listDocs(), api.listFolders()])
+      if (seq !== refreshSeq.current) return
       setDocs(d)
       setFolders(f)
     } catch {
@@ -188,6 +199,17 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
       setLoaded(true)
     }
   }, [])
+
+  // 从阅读页切回或窗口重新获得焦点时立即同步，不必等下一轮定时器。
+  useEffect(() => {
+    const sync = () => refresh()
+    window.addEventListener('focus', sync)
+    document.addEventListener('visibilitychange', sync)
+    return () => {
+      window.removeEventListener('focus', sync)
+      document.removeEventListener('visibilitychange', sync)
+    }
+  }, [refresh])
 
   // 首屏:先把旧版 localStorage 里的空文件夹迁到服务端,再取数据
   useEffect(() => {
@@ -226,7 +248,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
   // 有进行中的任务(或刚提交过任务)时轮询刷新
   useEffect(() => {
     if (!pollBoost && !docs.some((d) => ACTIVE.includes(d.status))) return
-    const t = setInterval(refresh, 2000)
+    const t = setInterval(refresh, 1000)
     return () => clearInterval(t)
   }, [docs, refresh, pollBoost])
 
@@ -284,6 +306,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
   const go = useCallback(
     (p: string) => {
       setParams(p ? { p } : {})
+      setPage(1)
       setSel(new Set())
       anchor.current = ''
     },
@@ -326,19 +349,29 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
     [searching, allFolders, folder],
   )
 
+  const pageCount = Math.max(1, Math.ceil(shownDocs.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const pagedDocs = useMemo(
+    () => shownDocs.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [shownDocs, currentPage],
+  )
+
   const allTags = useMemo(() => [...new Set(docs.flatMap((d) => d.tags || []))].sort(), [docs])
   const hasFilter = searching || !!tagFilter
 
   /** 搜索是全局的,此时「返回」的语义是退出搜索而不是上一层目录 */
   const back = useCallback(() => {
-    if (searching) setSearch('')
+    if (searching) {
+      setSearch('')
+      setPage(1)
+    }
     else go(parent(folder))
   }, [searching, folder, go])
 
   /** 当前视图里的全部行,供 Shift 范围选择与 Ctrl+A 使用 */
   const order = useMemo(
-    () => [...shownFolders.map(fkey), ...shownDocs.map((d) => dkey(d.id))],
-    [shownFolders, shownDocs],
+    () => [...shownFolders.map(fkey), ...pagedDocs.map((d) => dkey(d.id))],
+    [shownFolders, pagedDocs],
   )
 
   const selDocIds = useMemo(
@@ -550,6 +583,26 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
     await act(() => api.renameFolder(from, join(parent(from), name)))
   }
 
+  const startDocRename = (d: DocMeta) => {
+    renamingDocRef.current = d.id
+    setRenamingDoc(d.id)
+    setDocRenameDraft(d.filename.replace(/\.pdf$/i, ''))
+  }
+
+  const cancelDocRename = () => {
+    renamingDocRef.current = ''
+    setRenamingDoc('')
+  }
+
+  const commitDocRename = async (d: DocMeta) => {
+    if (renamingDocRef.current !== d.id) return
+    renamingDocRef.current = ''
+    setRenamingDoc('')
+    const name = docRenameDraft.trim()
+    if (!name || `${name}.pdf`.toLowerCase() === d.filename.toLowerCase()) return
+    await act(() => api.updateDoc(d.id, { filename: name }))
+  }
+
   const upload = async (files: FileList | File[]) => {
     const pdfs = Array.from(files).filter((f) => f.name.toLowerCase().endsWith('.pdf'))
     if (!pdfs.length) return
@@ -746,7 +799,11 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
       <span className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden bg-hover">
         <span
           className={`block h-full transition-[width] duration-300 ${
-            d.status === 'translating' ? 'bg-violet-500' : 'bg-blue-500'
+            d.status === 'translating'
+              ? 'bg-violet-500'
+              : d.status === 'queued'
+                ? 'bg-amber-500'
+                : 'bg-blue-500'
           }`}
           style={{ width: `${Math.max(3, Math.round((d.progress || 0) * 100))}%` }}
         />
@@ -803,10 +860,14 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
   }))
 
   const contentShape = 'flex items-center gap-3 border-b border-line px-3'
+  const changePage = (next: number) => {
+    setPage(Math.max(1, Math.min(pageCount, next)))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 
   return (
     <main className="mx-auto max-w-[1500px] px-5 pb-24 pt-6 md:px-8">
-      <header className="mb-3">
+      <header className="mb-4">
         <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-ink">文库</h1>
         <p className="mt-1 text-[13px] text-mut">
           {docs.length === 0
@@ -816,8 +877,10 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
         </p>
       </header>
 
-      {/* 导航条:返回上一级 + 面包屑 + 新建/上传 */}
-      <div className="sticky top-3 z-30 mb-3 flex flex-wrap items-center gap-2 rounded-card border border-line bg-surface/95 px-2.5 py-2 shadow-card backdrop-blur">
+      {/* 标题正常随页面滚动；两行工具条作为独立浮动卡片吸顶 */}
+      <div className="sticky top-[68px] z-30 mb-4 rounded-[16px] border border-line bg-surface/95 shadow-pop backdrop-blur-xl md:top-5">
+        {/* 导航条:返回上一级 + 面包屑 + 新建/上传 */}
+        <div className="flex flex-wrap items-center gap-2 px-2.5 py-2 md:pr-[280px]">
         <button
           onClick={back}
           disabled={!folder && !searching}
@@ -863,44 +926,52 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
           )}
         </nav>
 
-        <button
-          onClick={() => {
-            setCreating(true)
-            setNewName('')
-            setCreateErr('')
-          }}
-          className="pl-btn pl-btn-sm pl-btn-ghost shrink-0"
+        <div className="flex w-full shrink-0 items-center justify-end gap-2 md:absolute md:right-[40px] md:top-1/2 md:w-auto md:-translate-y-1/2">
+          <button
+            onClick={() => {
+              setCreating(true)
+              setNewName('')
+              setCreateErr('')
+            }}
+            className="pl-btn pl-btn-sm pl-btn-ghost shrink-0"
+          >
+            <FolderPlus className="h-4 w-4" />
+            新建文件夹
+          </button>
+
+          <button
+            className="pl-btn pl-btn-sm pl-btn-primary shrink-0"
+            onClick={() => fileInput.current?.click()}
+            disabled={busy}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            上传 PDF
+          </button>
+
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".pdf"
+            multiple
+            hidden
+            onChange={(e) => e.target.files && upload(e.target.files)}
+          />
+        </div>
+        </div>
+
+        {/* 搜索与筛选工具行 */}
+        <div
+          className="flex flex-wrap items-center gap-2 p-2 pt-0 md:pr-[280px]"
+          style={{ ['--ctl-h' as string]: '36px' }}
         >
-          <FolderPlus className="h-4 w-4" />
-          新建文件夹
-        </button>
-
-        <button
-          className="pl-btn pl-btn-sm pl-btn-primary shrink-0"
-          onClick={() => fileInput.current?.click()}
-          disabled={busy}
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          上传 PDF
-        </button>
-
-        <input
-          ref={fileInput}
-          type="file"
-          accept=".pdf"
-          multiple
-          hidden
-          onChange={(e) => e.target.files && upload(e.target.files)}
-        />
-      </div>
-
-      {/* 工具行 */}
-      <div className="mb-3 flex flex-wrap items-center gap-2" style={{ ['--ctl-h' as string]: '36px' }}>
         <div className="relative min-w-[200px] flex-1 sm:max-w-[340px]">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-mut" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             placeholder={folder ? '搜索全部文件夹…' : '搜索文件名或标签…'}
             className="pl-input pl-input-icon text-[13px]"
           />
@@ -909,7 +980,10 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
         <Dropdown
           value={tagFilter}
           options={tagOptions}
-          onChange={setTagFilter}
+          onChange={(v) => {
+            setTagFilter(v)
+            setPage(1)
+          }}
           size="sm"
           className="w-[132px]"
         />
@@ -917,7 +991,10 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
         <Dropdown
           value={sort}
           options={SORT_OPTIONS}
-          onChange={setSort}
+          onChange={(v) => {
+            setSort(v)
+            setPage(1)
+          }}
           size="sm"
           className="w-[168px]"
         />
@@ -940,6 +1017,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
               <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -1148,7 +1226,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
 
         {/* 文档行 */}
         {view === 'list' &&
-          shownDocs.map((d, i) => {
+          pagedDocs.map((d, i) => {
             const key = dkey(d.id)
             const on = liveSel.has(key)
             return (
@@ -1160,8 +1238,8 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                   e.dataTransfer.setData(DRAG_MIME, JSON.stringify(keys))
                   e.dataTransfer.effectAllowed = 'move'
                 }}
-                onClick={(e) => clickRow(e, key)}
-                onDoubleClick={() => openReader(d)}
+                onClick={(e) => renamingDoc !== d.id && clickRow(e, key)}
+                onDoubleClick={() => renamingDoc !== d.id && openReader(d)}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   setCtx({ x: e.clientX, y: e.clientY, kind: 'doc', id: d.id })
@@ -1187,14 +1265,30 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
 
                 <div className="flex min-w-[140px] flex-1 items-center gap-2">
                   <FileText className={`h-4 w-4 shrink-0 ${canRead(d) ? 'text-accent' : 'text-mut'}`} />
-                  <span
-                    className={`min-w-0 truncate text-[13.5px] ${
-                      canRead(d) ? 'font-medium text-ink group-hover/row:text-accent' : 'text-ink'
-                    }`}
-                    title={d.filename}
-                  >
-                    {d.filename}
-                  </span>
+                  {renamingDoc === d.id ? (
+                    <input
+                      autoFocus
+                      value={docRenameDraft}
+                      onChange={(e) => setDocRenameDraft(e.target.value)}
+                      onClick={(e) => e.stopPropagation()}
+                      onBlur={() => commitDocRename(d)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitDocRename(d)
+                        if (e.key === 'Escape') cancelDocRename()
+                      }}
+                      className="h-7 min-w-0 flex-1 rounded-[7px] border border-line2 bg-surface px-2 text-[13px] outline-none focus:border-accent"
+                      aria-label="文档名称"
+                    />
+                  ) : (
+                    <span
+                      className={`min-w-0 truncate text-[13.5px] ${
+                        canRead(d) ? 'font-medium text-ink group-hover/row:text-accent' : 'text-ink'
+                      }`}
+                      title={d.filename}
+                    >
+                      {d.filename}
+                    </span>
+                  )}
                   {searching && (
                     <button
                       onClick={(e) => {
@@ -1215,6 +1309,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                       onClick={(e) => {
                         e.stopPropagation()
                         setTagFilter(t)
+                        setPage(1)
                       }}
                       title="按此标签筛选"
                       className="hidden max-w-[104px] shrink-0 truncate rounded-[7px] bg-accent-soft px-1.5 py-0.5 text-[11.5px] text-accent-ink transition-colors hover:bg-accent-line/60 lg:block"
@@ -1247,7 +1342,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
           })}
 
         {/* 网格视图 */}
-        {view === 'grid' && (shownFolders.length > 0 || shownDocs.length > 0) && (
+        {view === 'grid' && (shownFolders.length > 0 || pagedDocs.length > 0) && (
           <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {shownFolders.map((path) => {
               const on = liveSel.has(fkey(path))
@@ -1288,7 +1383,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
               )
             })}
 
-            {shownDocs.map((d, i) => {
+            {pagedDocs.map((d, i) => {
               const on = liveSel.has(dkey(d.id))
               return (
                 <div
@@ -1299,8 +1394,12 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(keys))
                     e.dataTransfer.effectAllowed = 'move'
                   }}
-                  onClick={(e) => clickRow(e, dkey(d.id))}
-                  onDoubleClick={() => openReader(d)}
+                  onClick={(e) => renamingDoc !== d.id && clickRow(e, dkey(d.id))}
+                  onDoubleClick={() => renamingDoc !== d.id && openReader(d)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setCtx({ x: e.clientX, y: e.clientY, kind: 'doc', id: d.id })
+                  }}
                   style={{ animationDelay: `${Math.min(i, 15) * 20}ms` }}
                   className={`group/row pl-fade-up relative overflow-hidden rounded-card border bg-surface p-3.5 transition-colors duration-150 ${
                     on
@@ -1310,12 +1409,28 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                 >
                   <div className="flex items-start gap-2.5">
                     <div className="min-w-0 flex-1">
-                      <p
-                        className="truncate text-[13.5px] font-medium text-ink group-hover/row:text-accent"
-                        title={d.filename}
-                      >
-                        {d.filename}
-                      </p>
+                      {renamingDoc === d.id ? (
+                        <input
+                          autoFocus
+                          value={docRenameDraft}
+                          onChange={(e) => setDocRenameDraft(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={() => commitDocRename(d)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') commitDocRename(d)
+                            if (e.key === 'Escape') cancelDocRename()
+                          }}
+                          className="h-7 w-full rounded-[7px] border border-line2 bg-surface px-2 text-[13px] outline-none focus:border-accent"
+                          aria-label="文档名称"
+                        />
+                      ) : (
+                        <p
+                          className="truncate text-[13.5px] font-medium text-ink group-hover/row:text-accent"
+                          title={d.filename}
+                        >
+                          {d.filename}
+                        </p>
+                      )}
                       <p className="mt-1 text-[12px] tabular-nums text-mut">
                         {fmtTime(mtime(d))}
                         {d.n_pages ? ` · ${d.n_pages} 页` : ''}
@@ -1358,7 +1473,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
         )}
 
         {/* 失败详情 */}
-        {shownDocs
+        {pagedDocs
           .filter((d) => d.status === 'failed' && d.error)
           .map((d) => (
             <pre
@@ -1368,6 +1483,32 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
               {`${d.filename}: ${d.error.split('\n').slice(-4).join('\n')}`}
             </pre>
           ))}
+
+        {pageCount > 1 && (
+          <nav className="flex items-center justify-center gap-2 border-t border-line px-3 py-4" aria-label="文档分页">
+            <button
+              type="button"
+              className="pl-btn pl-btn-sm pl-btn-ghost"
+              disabled={currentPage <= 1}
+              onClick={() => changePage(currentPage - 1)}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+              上一页
+            </button>
+            <span className="min-w-[92px] text-center text-[12.5px] tabular-nums text-mut">
+              {currentPage} / {pageCount}
+            </span>
+            <button
+              type="button"
+              className="pl-btn pl-btn-sm pl-btn-ghost"
+              disabled={currentPage >= pageCount}
+              onClick={() => changePage(currentPage + 1)}
+            >
+              下一页
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </nav>
+        )}
 
         {/* 空态:等首次加载完成再显示,避免闪一下空列表 */}
         {loaded && shownFolders.length === 0 && shownDocs.length === 0 && !creating && (
@@ -1402,6 +1543,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                   onClick={() => {
                     setSearch('')
                     setTagFilter('')
+                    setPage(1)
                   }}
                 >
                   清除筛选
@@ -1431,7 +1573,7 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
 
       {/* 选中项浮动操作条 */}
       {liveSel.size > 0 && (
-        <div className="fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
+        <div className="left-sb fixed right-0 bottom-6 z-40 flex justify-center px-4">
           <div className="pl-pop-in flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-2 shadow-pop">
             <span className="pl-1 text-[13px] text-ink2">
               已选 <span className="font-medium tabular-nums text-ink">{liveSel.size}</span> 项
@@ -1527,6 +1669,14 @@ export default function Documents({ openTab }: { openTab: (id: string) => void }
                       }}
                     />
                   )}
+                  <MenuItem
+                    icon={SquarePen}
+                    label="重命名"
+                    onClick={() => {
+                      startDocRename(d)
+                      setCtx(null)
+                    }}
+                  />
                   <MenuItem
                     icon={FolderInput}
                     label="移动到…"

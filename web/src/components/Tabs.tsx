@@ -85,8 +85,8 @@ export function TabsList({ tabs, activeId, close }: ReturnType<typeof useTabs>) 
   const nav = useNavigate()
   if (!tabs.length) return null
   return (
-    <div className="mt-2 flex flex-col gap-0.5 border-t border-line px-2.5 pt-2">
-      <span className="pl-eyebrow nav-label px-1 pb-1">打开</span>
+    <div className="sidebar-tabs mt-2 flex flex-col gap-0.5 px-2 pt-2">
+      <span className="pl-eyebrow nav-label px-3 pb-1.5">打开</span>
       {tabs.map(({ id, meta }) => {
         const on = id === activeId
         const busy = meta?.status === 'converting' || meta?.status === 'translating'
@@ -94,7 +94,7 @@ export function TabsList({ tabs, activeId, close }: ReturnType<typeof useTabs>) 
         return (
           <div
             key={id}
-            className={`group/tab flex h-8 items-center gap-1.5 rounded-[9px] pl-2 pr-1 text-[12.5px] transition-colors duration-150 ${
+            className={`sidebar-tab group/tab flex h-9 items-center gap-1.5 rounded-[9px] pl-3 pr-1.5 text-[13px] transition-colors duration-150 ${
               on ? 'bg-accent-soft font-medium text-accent-ink' : 'text-ink2 hover:bg-hover'
             }`}
           >
@@ -103,12 +103,12 @@ export function TabsList({ tabs, activeId, close }: ReturnType<typeof useTabs>) 
                 if (!on) nav(`/reader/${id}`)
               }}
               title={meta?.filename || id}
-              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              className="sidebar-tab-main flex min-w-0 flex-1 items-center gap-3 text-left"
             >
               {busy ? (
                 <span className="pl-dot h-1.5 w-1.5 shrink-0 animate-pulse bg-violet-500" />
               ) : (
-                <FileText className={`h-3.5 w-3.5 shrink-0 ${on ? 'text-accent' : 'text-mut'}`} />
+                <FileText className={`h-[17px] w-[17px] shrink-0 ${on ? 'text-accent' : 'text-mut'}`} strokeWidth={1.8} />
               )}
               <span className="nav-label truncate">{label}</span>
             </button>

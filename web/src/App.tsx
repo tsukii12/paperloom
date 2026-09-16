@@ -1,5 +1,5 @@
-import { Library, SlidersHorizontal } from 'lucide-react'
-import { useEffect } from 'react'
+import { Library, PanelLeftClose, PanelLeftOpen, SlidersHorizontal } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { NavLink, Route, Routes } from 'react-router-dom'
 import BrandMark from './components/BrandMark'
 import ThemeSwitch from './components/ThemeSwitch'
@@ -25,7 +25,7 @@ function SideNavItem({
       end={end}
       title={label}
       className={({ isActive }) =>
-        `relative flex h-9 items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] transition-colors duration-150 ${
+        `sidebar-nav-item relative flex h-10 items-center gap-3 rounded-[10px] px-3 text-[14px] transition-colors duration-150 ${
           isActive
             ? 'bg-accent-soft font-medium text-accent-ink'
             : 'text-ink2 hover:bg-hover hover:text-ink'
@@ -34,10 +34,8 @@ function SideNavItem({
     >
       {({ isActive }) => (
         <>
-          {isActive && (
-            <span className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-accent" />
-          )}
-          <Icon className="h-[17px] w-[17px] shrink-0" />
+          {isActive && <span className="sr-only">当前页面</span>}
+          <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.8} />
           <span className="nav-label truncate">{label}</span>
         </>
       )}
@@ -45,38 +43,51 @@ function SideNavItem({
   )
 }
 
-function Sidebar({ tabs }: { tabs: ReturnType<typeof useTabs> }) {
+function Sidebar({
+  tabs,
+  collapsed,
+  onToggle,
+}: {
+  tabs: ReturnType<typeof useTabs>
+  collapsed: boolean
+  onToggle: () => void
+}) {
   return (
     <aside className="no-print fixed inset-y-0 left-0 z-40 hidden w-sb flex-col border-r border-line bg-surface md:flex">
-      <div className="flex h-[74px] shrink-0 items-center gap-2.5 px-3.5">
-        <BrandMark className="h-7 w-7 shrink-0 text-accent" />
-        <span className="nav-label min-w-0">
-          <span className="block truncate font-display text-[18px] leading-tight tracking-tight text-ink">
-            PaperLoom
-          </span>
-          <span className="mt-0.5 block truncate text-[11.5px] leading-tight text-mut">
-            论文翻译阅读助手
-          </span>
-        </span>
+      <div className="sidebar-head flex h-[58px] shrink-0 items-center gap-2 px-2.5">
+        <div className="sidebar-identity flex min-w-0 flex-1 items-center gap-2.5 px-1.5">
+          <BrandMark className="h-7 w-7 shrink-0 text-accent" />
+          <span className="nav-label truncate text-[16px] font-semibold tracking-tight text-ink">PaperLoom</span>
+        </div>
+        <button
+          type="button"
+          onClick={onToggle}
+          title={collapsed ? '打开侧栏' : '收起侧栏'}
+          aria-label={collapsed ? '打开侧栏' : '收起侧栏'}
+          className="sidebar-toggle pl-iconbtn h-9 w-9 shrink-0 rounded-[10px] text-ink2 hover:bg-hover hover:text-ink"
+        >
+          {collapsed ? <PanelLeftOpen className="h-[18px] w-[18px]" /> : <PanelLeftClose className="h-[18px] w-[18px]" />}
+        </button>
       </div>
 
-      <div className="mx-3 h-px shrink-0 bg-line" />
-
       {/* 浏览:文库 + 已打开的标签页(标签多时可滚动) */}
-      <div className="pl-thin flex min-h-0 flex-1 flex-col overflow-y-auto py-2.5">
-        <div className="flex shrink-0 flex-col px-1">
-          <span className="pl-eyebrow nav-label px-2.5 pb-1">浏览</span>
+      <div className="pl-thin flex min-h-0 flex-1 flex-col overflow-y-auto py-1.5">
+        <div className="flex shrink-0 flex-col px-2">
+          <span className="pl-eyebrow nav-label px-3 pb-1.5 pt-1">浏览</span>
           <SideNavItem to="/" end label="文库" icon={Library} />
         </div>
         <TabsList {...tabs} />
       </div>
 
       {/* 底部:设置 → 外观 */}
-      <div className="shrink-0 p-2.5">
-        <div className="mx-0.5 mb-2.5 h-px bg-line" />
+      <div className="shrink-0 p-2">
+        <div className="mx-1 mb-2 h-px bg-line" />
         <SideNavItem to="/settings" label="设置" icon={SlidersHorizontal} />
-        <div className="mt-2.5">
+        <div className="sidebar-theme-wide mt-2.5">
           <ThemeSwitch />
+        </div>
+        <div className="sidebar-theme-compact mt-2.5 hidden justify-center">
+          <ThemeSwitch compact />
         </div>
       </div>
     </aside>
@@ -120,14 +131,25 @@ function MobileBar() {
 
 export default function App() {
   const tabs = useTabs()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem('pl-sidebar-collapsed') === '1',
+  )
 
   useEffect(() => {
     document.body.className = ''
   }, [])
 
+  useEffect(() => {
+    localStorage.setItem('pl-sidebar-collapsed', sidebarCollapsed ? '1' : '0')
+  }, [sidebarCollapsed])
+
   return (
-    <div className="min-h-screen">
-      <Sidebar tabs={tabs} />
+    <div className={`pl-shell min-h-screen ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+      <Sidebar
+        tabs={tabs}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((v) => !v)}
+      />
       <MobileBar />
       <div className="ml-sb">
         <Routes>

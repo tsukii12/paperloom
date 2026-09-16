@@ -39,6 +39,8 @@ def _worker(kind: str, q: "queue.Queue[tuple]") -> None:
     while True:
         doc_id, opts = q.get()
         try:
+            if is_cancelled(doc_id):
+                raise JobCancelled()
             if kind == "convert":
                 _run_convert(doc_id, opts)
             else:
@@ -82,7 +84,7 @@ def request_cancel(doc_id: str) -> bool:
     if not meta:
         return False
     with _lock:
-        active = meta["status"] in ("converting", "translating")
+        active = meta["status"] in ("queued", "converting", "translating")
         if not active and doc_id not in _pending:
             return False
         _cancel_flags.add(doc_id)
@@ -169,16 +171,24 @@ def submit(doc_id: str, kind: str, *, engine: str | None = None,
         if doc_id in _pending:
             return False
         _pending.add(doc_id)
-    # 每个新任务都从头记日志
-    db.clear_log(doc_id)
-    db.append_log(doc_id, f"已排入{'转换' if kind == 'convert' else '翻译'}队列")
-    if engine:
-        db.update_doc(doc_id, engine=engine)
-    opts: dict = {"only_missing": only_missing}
-    if only_ids:
-        opts["only_ids"] = set(only_ids)
-    if engine:
-        opts["engine"] = engine
-    _start()
-    ( _q_convert if kind == "convert" else _q_translate ).put((doc_id, opts))
-    return True
+    try:
+        # 立即持久化排队态，前端可持续轮询；否则队列间隙会被误判为全部完成。
+        label = "转换" if kind == "convert" else "翻译"
+        db.clear_log(doc_id)
+        db.append_log(doc_id, f"已排入{label}队列")
+        fields = {"status": "queued", "stage": f"排队等待{label}", "progress": 0.0, "error": ""}
+        if engine:
+            fields["engine"] = engine
+        db.update_doc(doc_id, **fields)
+        opts: dict = {"only_missing": only_missing}
+        if only_ids:
+            opts["only_ids"] = set(only_ids)
+        if engine:
+            opts["engine"] = engine
+        _start()
+        (_q_convert if kind == "convert" else _q_translate).put((doc_id, opts))
+        return True
+    except Exception:
+        with _lock:
+            _pending.discard(doc_id)
+        raise

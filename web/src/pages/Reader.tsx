@@ -132,6 +132,7 @@ interface SelTool {
   start: number
   end: number
   text: string
+  side: 'origin' | 'translated'
 }
 interface TransBox {
   x: number
@@ -149,6 +150,7 @@ interface NoteBox {
   end: number
   ann: Annotation | null
   draft: string
+  side: 'origin' | 'translated'
 }
 
 function BlockView({
@@ -180,7 +182,7 @@ function BlockView({
     case 'title': {
       const text = zh ? (b.zh ?? '') : (b.text ?? '')
       const body =
-        !zh && anns && anns.length ? (
+        anns && anns.length ? (
           <MarkedText text={text} anns={anns} onClickAnn={onAnnClick!} />
         ) : (
           text
@@ -193,7 +195,7 @@ function BlockView({
     case 'text': {
       const text = zh ? (b.zh ?? '') : (b.text ?? '')
       const body =
-        !zh && anns && anns.length ? (
+        anns && anns.length ? (
           <MarkedText text={text} anns={anns} onClickAnn={onAnnClick!} />
         ) : (
           text
@@ -204,7 +206,7 @@ function BlockView({
     case 'caption': {
       const text = zh ? (b.zh ?? '') : (b.text ?? '')
       const body =
-        !zh && anns && anns.length ? (
+        anns && anns.length ? (
           <MarkedText text={text} anns={anns} onClickAnn={onAnnClick!} />
         ) : (
           text
@@ -214,7 +216,7 @@ function BlockView({
     }
     case 'list': {
       const items = (zh ? (b.zh_items ?? b.items) : b.items) ?? []
-      const marks = !zh && anns && anns.length ? anns : null
+      const marks = anns && anns.length ? anns : null
       const starts = itemOffsets(items)
       inner = (
         <ul className="mb-3.5 list-disc space-y-1.5 pl-5 leading-[1.85] marker:text-mut">
@@ -347,7 +349,7 @@ export default function Reader() {
   const annsByBlock = useMemo(() => {
     const m: Record<string, Annotation[]> = {}
     anns.forEach((a) => {
-      ;(m[a.block_id] ??= []).push(a)
+      ;(m[`${a.block_id}:${a.side || 'origin'}`] ??= []).push(a)
     })
     return m
   }, [anns])
@@ -382,8 +384,9 @@ export default function Reader() {
     [blocks, toc],
   )
 
-  const locateBlock = (blockId: string) => {
-    const el = document.querySelector(`[data-bid="${blockId}"]`)
+  const locateBlock = (blockId: string, side?: 'origin' | 'translated') => {
+    const sideSelector = side ? `[data-side="${side}"]` : ''
+    const el = document.querySelector(`[data-bid="${blockId}"]${sideSelector}`)
     el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     setFlash(blockId)
     setTimeout(() => setFlash(''), 1600)
@@ -481,7 +484,9 @@ export default function Reader() {
   }, [lightbox, stepLightbox])
 
   const locate = (ann: Annotation) => {
-    locateBlock(ann.block_id)
+    const side = ann.side || 'origin'
+    if (mode !== 'dual' && mode !== side) setMode(side)
+    window.setTimeout(() => locateBlock(ann.block_id, side), 0)
   }
 
   const delAnn = async (ann: Annotation) => {
@@ -548,7 +553,7 @@ export default function Reader() {
 
   // 转换/翻译进行中时轮询
   useEffect(() => {
-    if (!meta || !['converting', 'translating'].includes(meta.status)) return
+    if (!meta || !['queued', 'converting', 'translating'].includes(meta.status)) return
     const t = setInterval(load, 2000)
     return () => clearInterval(t)
   }, [meta, load])
@@ -584,7 +589,7 @@ export default function Reader() {
 
   const onMouseUp = () => {
     const sel = window.getSelection()
-    if (!sel || sel.isCollapsed || mode === 'translated') {
+    if (!sel || sel.isCollapsed) {
       setTool(null)
       return
     }
@@ -594,7 +599,7 @@ export default function Reader() {
     if (
       !startEl ||
       startEl !== endEl ||
-      !startEl.hasAttribute('data-origin') ||
+      !startEl.hasAttribute('data-side') ||
       !(startEl instanceof HTMLElement)
     ) {
       setTool(null)
@@ -615,6 +620,7 @@ export default function Reader() {
       start,
       end,
       text: sel.toString(),
+      side: (startEl.dataset.side as 'origin' | 'translated') || 'origin',
     })
   }
 
@@ -627,6 +633,7 @@ export default function Reader() {
         end: tool.end,
         kind,
         color,
+        side: tool.side,
       })
     } catch {
       /* ignore */
@@ -646,6 +653,7 @@ export default function Reader() {
       end: tool.end,
       ann: null,
       draft: '',
+      side: tool.side,
     })
     setTool(null)
     setTimeout(() => noteRef.current?.focus(), 30)
@@ -661,6 +669,7 @@ export default function Reader() {
       end: a.end,
       ann: a,
       draft: a.note,
+      side: a.side || 'origin',
     })
   }
 
@@ -677,6 +686,7 @@ export default function Reader() {
           kind: 'highlight',
           color: markColor,
           note: noteBox.draft,
+          side: noteBox.side,
         })
       }
       setNoteBox(null)
@@ -736,9 +746,9 @@ export default function Reader() {
       </main>
     )
 
-  const working = ['converting', 'translating'].includes(meta.status)
+  const working = ['queued', 'converting', 'translating'].includes(meta.status)
   const progress = Math.max(3, Math.round((meta.progress || 0) * 100))
-  const locked = ['ready', 'done', 'cancelled'].includes(meta.status)
+  const locked = blocks.length > 0 && ['queued', 'ready', 'done', 'cancelled'].includes(meta.status)
 
   return (
     <div onMouseDown={() => setTool(null)}>
@@ -872,7 +882,11 @@ export default function Reader() {
             <div className="absolute inset-x-0 bottom-0 h-[2px] bg-hover">
               <div
                 className={`relative h-full overflow-hidden transition-[width] duration-300 ${
-                  meta.status === 'translating' ? 'bg-violet-500' : 'bg-blue-500'
+                  meta.status === 'translating'
+                    ? 'bg-violet-500'
+                    : meta.status === 'queued'
+                      ? 'bg-amber-500'
+                      : 'bg-blue-500'
                 }`}
                 style={{ width: `${progress}%` }}
               >
@@ -935,8 +949,10 @@ export default function Reader() {
               <BookOpenText className="h-6 w-6 text-accent" />
             </span>
             <p className="mt-4 text-[14px] text-ink2">
-              {meta.status === 'converting'
-                ? 'PDF 转换中,完成后自动刷新…'
+              {meta.status === 'queued'
+                ? '任务排队中,开始处理后会自动刷新…'
+                : meta.status === 'converting'
+                  ? 'PDF 转换中,完成后自动刷新…'
                 : '尚无内容,请先在文库完成转换'}
             </p>
             {meta.status === 'translating' && (
@@ -960,23 +976,25 @@ export default function Reader() {
                   <div
                     className={`pl-col-origin min-w-0 ${flash === b.id ? 'pl-flash' : ''}`}
                     data-bid={b.id}
-                    data-origin="1"
+                    data-side="origin"
                   >
                     <BlockView
                       b={b}
                       side="origin"
                       mode={mode}
                       docId={id}
-                      anns={annsByBlock[b.id]}
+                      anns={annsByBlock[`${b.id}:origin`]}
                       onAnnClick={onAnnClick}
                     />
                   </div>
-                  <div className="pl-col-zh min-w-0">
+                  <div className="pl-col-zh min-w-0" data-bid={b.id} data-side="translated">
                     <BlockView
                       b={b}
                       side="zh"
                       mode={mode}
                       docId={id}
+                      anns={annsByBlock[`${b.id}:translated`]}
+                      onAnnClick={onAnnClick}
                       onRetry={retryBlock}
                       retrying={retryingBlock === b.id}
                     />
@@ -988,14 +1006,15 @@ export default function Reader() {
                   className={`min-w-0 ${mode === 'origin' ? 'pl-col-origin' : 'pl-col-zh'} ${
                     flash === b.id ? 'pl-flash' : ''
                   }`}
-                  {...(mode === 'origin' ? { 'data-bid': b.id, 'data-origin': '1' } : {})}
+                  data-bid={b.id}
+                  data-side={mode === 'translated' ? 'translated' : 'origin'}
                 >
                   <BlockView
                     b={b}
                     side={mode === 'translated' ? 'zh' : 'origin'}
                     mode={mode}
                     docId={id}
-                    anns={mode === 'origin' ? annsByBlock[b.id] : undefined}
+                    anns={annsByBlock[`${b.id}:${mode === 'translated' ? 'translated' : 'origin'}`]}
                     onAnnClick={onAnnClick}
                   />
                 </div>
@@ -1030,14 +1049,17 @@ export default function Reader() {
                   <p className="mt-3 text-[12.5px] leading-relaxed text-mut">
                     还没有批注笔记。
                     <br />
-                    划选原文 → 点「批注」写下笔记,就会集中在这里。
+                    划选原文或译文 → 点「批注」写下笔记,就会集中在这里。
                   </p>
                 </div>
               )}
               <div className="space-y-2.5">
                 {[...notes].reverse().map((a) => {
                   const b = blockById[a.block_id]
-                  const full = b?.text ?? ''
+                  const translated = (a.side || 'origin') === 'translated'
+                  const full = translated
+                    ? b?.zh ?? b?.zh_items?.join('') ?? ''
+                    : b?.text ?? b?.items?.join('') ?? ''
                   const excerpt = full.slice(
                     Math.max(0, a.start - 12),
                     Math.min(full.length, a.end + 12),
@@ -1067,6 +1089,7 @@ export default function Reader() {
                       <span className="mb-1.5 flex items-center gap-1.5 text-[11px] text-mut">
                         <Highlighter className="h-3 w-3 text-accent" />
                         {a.kind === 'highlight' ? '高亮' : '下划线'}
+                        {translated ? ' · 译文' : ' · 原文'}
                         {sec ? ` · 第 ${sec.no} 节` : ''}
                         {sec?.title ? ` · ${sec.title.slice(0, 16)}` : ''}
                       </span>

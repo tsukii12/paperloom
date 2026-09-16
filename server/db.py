@@ -53,6 +53,7 @@ def init_db() -> None:
                 kind TEXT NOT NULL DEFAULT 'highlight',
                 color TEXT NOT NULL DEFAULT 'yellow',
                 note TEXT DEFAULT '',
+                side TEXT NOT NULL DEFAULT 'origin',
                 created_at TEXT NOT NULL
             )"""
         )
@@ -74,6 +75,9 @@ def init_db() -> None:
             c.execute("UPDATE docs SET updated_at = created_at WHERE updated_at = ''")
         if "log" not in cols:
             c.execute("ALTER TABLE docs ADD COLUMN log TEXT DEFAULT ''")
+        ann_cols = {r[1] for r in c.execute("PRAGMA table_info(annotations)").fetchall()}
+        if "side" not in ann_cols:
+            c.execute("ALTER TABLE annotations ADD COLUMN side TEXT NOT NULL DEFAULT 'origin'")
 
 
 def _has_table(c: sqlite3.Connection, name: str) -> bool:
@@ -83,19 +87,19 @@ def _has_table(c: sqlite3.Connection, name: str) -> bool:
 
 
 def add_annotation(ann_id: str, doc_id: str, block_id: str, start: int, end: int,
-                   kind: str, color: str, note: str) -> dict:
+                   kind: str, color: str, note: str, side: str = "origin") -> dict:
     import datetime
 
     with _conn() as c:
         c.execute(
-            "INSERT INTO annotations(id, doc_id, block_id, start, end, kind, color, note, created_at)"
-            " VALUES(?,?,?,?,?,?,?,?,?)",
-            (ann_id, doc_id, block_id, start, end, kind, color, note,
+            "INSERT INTO annotations(id, doc_id, block_id, start, end, kind, color, note, side, created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (ann_id, doc_id, block_id, start, end, kind, color, note, side,
              datetime.datetime.now().isoformat(timespec="seconds")),
         )
     return {
         "id": ann_id, "doc_id": doc_id, "block_id": block_id, "start": start, "end": end,
-        "kind": kind, "color": color, "note": note,
+        "kind": kind, "color": color, "note": note, "side": side,
     }
 
 

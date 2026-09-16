@@ -57,7 +57,8 @@ export const api = {
       body: JSON.stringify(s),
     }).then(j<Settings>),
 
-  testSettings: () => post('/api/settings/test').then(j<{ ok: boolean; message: string }>),
+  testSettings: (settings: Pick<Settings, 'base_url' | 'api_key' | 'model'>) =>
+    post('/api/settings/test', settings).then(j<{ ok: boolean; message: string }>),
 
   engines: () =>
     fetch('/api/engines').then(
@@ -67,7 +68,7 @@ export const api = {
   installEngine: (engine: string) =>
     post(`/api/engines/${engine}/install`).then(j<{ ok: boolean; message: string }>),
 
-  updateDoc: (id: string, patch: { folder?: string; tags?: string[] }) =>
+  updateDoc: (id: string, patch: { filename?: string; folder?: string; tags?: string[] }) =>
     fetch(`/api/docs/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -98,9 +99,19 @@ export const api = {
     ),
 
   listAnnotations: (id: string) =>
-    fetch(`/api/docs/${id}/annotations`).then(j<Annotation[]>),  addAnnotation: (
+    fetch(`/api/docs/${id}/annotations`).then(j<Annotation[]>),
+
+  addAnnotation: (
     id: string,
-    body: { block_id: string; start: number; end: number; kind: AnnKind; color: AnnColor; note?: string },
+    body: {
+      block_id: string
+      start: number
+      end: number
+      kind: AnnKind
+      color: AnnColor
+      side: 'origin' | 'translated'
+      note?: string
+    },
   ) => post(`/api/docs/${id}/annotations`, body).then(j<Annotation>),
 
   editAnnotation: (

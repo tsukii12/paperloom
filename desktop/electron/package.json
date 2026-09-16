@@ -1,7 +1,7 @@
 {
   "name": "paperloom-desktop",
   "productName": "PaperLoom",
-  "version": "0.8.0",
+  "version": "0.8.5",
   "description": "PaperLoom 织译 — 论文 PDF 转 HTML 并翻译,双栏对照阅读",
   "main": "main.js",
   "private": true,

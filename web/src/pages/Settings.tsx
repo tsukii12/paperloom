@@ -299,11 +299,6 @@ export default function SettingsPage() {
   const [install, setInstall] = useState<Record<string, EngineInstallState>>({})
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  useEffect(() => {
-    api.settings().then(setS)
-    refreshEngines()
-  }, [])
-
   const refreshEngines = () => {
     api.engines().then((e) => {
       setEngines({ docling: e.docling, mineru: e.mineru })
@@ -322,6 +317,14 @@ export default function SettingsPage() {
       }
     })
   }
+
+  useEffect(() => {
+    api.settings().then(setS)
+    refreshEngines()
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [])
 
   if (!s) return null
 
@@ -360,7 +363,9 @@ export default function SettingsPage() {
     setTesting(true)
     setResult(null)
     try {
-      setResult(await api.testSettings())
+      setResult(
+        await api.testSettings({ base_url: s.base_url, api_key: s.api_key, model: s.model }),
+      )
     } catch (e) {
       setResult({ ok: false, message: String(e instanceof Error ? e.message : e) })
     } finally {
@@ -705,6 +710,19 @@ export default function SettingsPage() {
         <Section icon={Info} title="关于" desc="一款论文 AI 翻译工具。">
           <dl className="divide-y divide-line">
             <Row label="版本" value={`v${__APP_VERSION__}`} />
+            <div className="flex items-baseline gap-4 py-2.5">
+              <dt className="w-20 shrink-0 text-[12.5px] text-mut">GitHub</dt>
+              <dd className="min-w-0 flex-1 text-[13px]">
+                <a
+                  href="https://github.com/tsukii12/paperloom"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-accent hover:underline"
+                >
+                  github.com/tsukii12/paperloom
+                </a>
+              </dd>
+            </div>
             <Row
               label="转换引擎"
               value={

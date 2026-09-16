@@ -1,5 +1,6 @@
 export type DocStatus =
   | 'uploaded'
+  | 'queued'
   | 'converting'
   | 'ready'
   | 'translating'
@@ -63,6 +64,7 @@ export interface Annotation {
   kind: AnnKind
   color: AnnColor
   note: string
+  side: 'origin' | 'translated'
   created_at: string
 }
 
