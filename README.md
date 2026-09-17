@@ -20,13 +20,16 @@
 
 ---
 
-## 🆕 0.8.5 更新
+## 🆕 0.8.6 更新
 
+- 修复覆盖安装到 `Program Files` 后因数据目录无写入权限而无法启动的问题
+- 数据默认迁移到 `%LOCALAPPDATA%\PaperLoom\data`，安装包升级不再覆盖用户数据
+- 设置页可迁移或切换数据目录，并可直接在文件资源管理器中打开当前目录
 - 原文和译文均支持高亮、下划线与批注，划选工具条在窄栏中保持单行显示
 - 文库采用可折叠侧栏与悬浮操作区，文档较多时自动分页，并支持文档重命名
 - 多文档转换 / 翻译改用明确的排队状态，修复批量任务期间页面刷新不及时的问题
 - 模型连接测试直接使用当前表单配置，并正确识别空回复与多种兼容接口返回格式
-- About 页面显示版本、GitHub 仓库信息与链接；当前版本为 **0.8.5**
+- About 页面显示版本、GitHub 仓库信息与链接；当前版本为 **0.8.6**
 
 ## ✨ 功能
 
@@ -98,7 +101,7 @@ npm run dist         # 打包 NSIS 安装包 → ../dist-electron/
 
 **安装包不含转换引擎。** 全打进去会到 400 MB+，现在只带 Electron + Python 运行时 +
 基础依赖(FastAPI / uvicorn / httpx 等，约 15 MB)，安装包约 **144 MB**。首次使用到
-「设置 → 转换引擎」下载，引擎装到 `resources/paperloom/data/engines/<engine>`，
+「设置 → 转换引擎」下载，引擎装到 `%LOCALAPPDATA%\PaperLoom\data\engines\<engine>`，
 再挂到 `sys.path` / `PYTHONPATH` —— 后端进程与转换 worker 子进程都能导入，装完立即可用。
 
 打包前需要 `.venv-base`(只含基础依赖的最小环境)：
@@ -108,7 +111,8 @@ uv venv .venv-base --python 3.12
 uv pip install --python .venv-base/Scripts/python.exe fastapi "uvicorn[standard]" python-multipart httpx truststore
 ```
 
-安装包按用户安装(`perMachine=false`)，数据存放在 `resources/paperloom/data`。
+安装包默认按用户安装(`perMachine=false`)。数据默认存放在
+`%LOCALAPPDATA%\PaperLoom\data`，也可以在设置页迁移到其他磁盘；程序升级不会删除该目录。
 `desktop/vc-runtime/` 里是随包的 VC++ 运行库，装完引擎后会自动补进 `torch/lib`，
 用于绕过旧系统上的 `WinError 1114`。
 
@@ -144,7 +148,7 @@ paperloom/
 - **引擎与主程序解耦** —— `converter/__init__.py` 为空，docling / mineru 的 import 全在
   函数内部和 worker 子进程里。所以**不装引擎也能正常启动**，只是转换时会提示去安装 ——
   这也是安装包能压到 144 MB 的前提。
-- **引擎安装位置** —— `data/engines/<engine>`，用随包的 `uv` 执行
+- **引擎安装位置** —— `%LOCALAPPDATA%\PaperLoom\data\engines\<engine>`(或设置的自定义数据目录)，用随包的 `uv` 执行
   `uv pip install --target`。每个引擎独立目录，各自解析依赖、互不干扰。
 - **路径注入** —— 启动时把引擎目录挂到 `sys.path` 和 `PYTHONPATH`；转换 worker 是
   `sys.executable` 子进程，从 `os.environ` 继承 —— 一处设置即可，装完无需重启。
@@ -152,7 +156,7 @@ paperloom/
 
 ## ⚠️ 说明与已知事项
 
-- 🔑 **API Key 存放** —— 明文存在 `data/settings.json`(仅本机、仅监听回环地址)。
+- 🔑 **API Key 存放** —— 明文存在当前数据目录的 `settings.json`(仅本机、仅监听回环地址)。
   `.gitignore` 已排除 `data/`，**不要把它提交到公开仓库**。
 - 🗑️ **删除即备份** —— 文档删除是移入 `data/trash/`，不直接删除。
 - 🧩 **VC++ 运行库** —— `torch` 的 `c10.dll` 需要较新的 VC++ 运行库，旧系统会报

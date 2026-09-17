@@ -21,13 +21,16 @@ and read the original and the translation side by side.
 
 ---
 
-## 🆕 What's New in 0.8.5
+## 🆕 What's New in 0.8.6
 
+- Fixed failure to start after an all-users install under `Program Files`, where the old data path was not writable
+- Data now defaults to `%LOCALAPPDATA%\PaperLoom\data`, outside the replaceable application directory
+- The Settings page can migrate or switch the data directory and open the current location in File Explorer
 - Highlights, underlines, and notes now work on both source and translated text; the selection toolbar stays on one line
 - The library now has a collapsible sidebar, floating controls, pagination, and document renaming
 - Multi-document conversion and translation use an explicit queued state, with more reliable live refresh
 - Model connection tests use the current unsaved form values and correctly reject empty or incompatible responses
-- The About page now shows the version and a link to the GitHub repository; current version: **0.8.5**
+- The About page now shows the version and a link to the GitHub repository; current version: **0.8.6**
 
 ## ✨ Features
 
@@ -108,7 +111,7 @@ npm run dist         # build an NSIS installer → ../dist-electron/
 **The installer ships no conversion engines.** Bundling them would push it past 400 MB. It carries only
 Electron + a Python runtime + the base dependencies (FastAPI / uvicorn / httpx and friends, ~15 MB),
 for a **~144 MB** installer. On first use, download an engine from *Settings → Conversion Engines*;
-it lands in `resources/paperloom/data/engines/<engine>` and is added to `sys.path` / `PYTHONPATH`,
+it lands in `%LOCALAPPDATA%\PaperLoom\data\engines\<engine>` and is added to `sys.path` / `PYTHONPATH`,
 so both the backend process and the conversion worker subprocess can import it — no restart needed.
 
 Building requires `.venv-base`, a minimal environment with only the base dependencies:
@@ -118,7 +121,9 @@ uv venv .venv-base --python 3.12
 uv pip install --python .venv-base/Scripts/python.exe fastapi "uvicorn[standard]" python-multipart httpx truststore
 ```
 
-The installer installs per-user (`perMachine=false`), and data lives in `resources/paperloom/data`.
+The installer defaults to per-user installation (`perMachine=false`). Data lives in
+`%LOCALAPPDATA%\PaperLoom\data` by default and can be migrated to another drive from Settings;
+upgrading the application does not remove it.
 `desktop/vc-runtime/` carries the VC++ runtime DLLs that get copied into `torch/lib` after an engine
 install, working around `WinError 1114` on older systems.
 
@@ -155,7 +160,7 @@ paperloom/
   imported lazily, inside functions and inside the worker subprocess. That means **the app starts fine
   with no engine installed**, only prompting you to install one when you convert — which is also what
   keeps the installer down to 144 MB.
-- **Where engines live** — `data/engines/<engine>`, installed by the bundled `uv` via
+- **Where engines live** — `%LOCALAPPDATA%\PaperLoom\data\engines\<engine>` (or the custom data directory), installed by the bundled `uv` via
   `uv pip install --target`. Each engine gets its own directory and resolves its own dependencies, so
   they never interfere with each other.
 - **Path injection** — at startup the engine directories are added to `sys.path` and `PYTHONPATH`.
@@ -165,7 +170,7 @@ paperloom/
 
 ## ⚠️ Notes & Caveats
 
-- 🔑 **API key storage** — stored in plaintext in `data/settings.json` (local machine only, loopback
+- 🔑 **API key storage** — stored in plaintext as `settings.json` inside the active data directory (local machine only, loopback
   interface only). `data/` is gitignored — **never commit it to a public repo**.
 - 🗑️ **Delete means back up** — deleting a document moves it to `data/trash/` rather than removing it.
 - 🧩 **VC++ runtime** — `torch`'s `c10.dll` needs a recent VC++ runtime; older systems raise

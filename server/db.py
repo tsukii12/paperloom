@@ -8,9 +8,7 @@ from __future__ import annotations
 import shutil
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
-
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "paperloom.db"
+from .paths import DB_PATH
 
 
 @contextmanager

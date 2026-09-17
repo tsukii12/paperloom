@@ -3,6 +3,8 @@ import {
   CheckCircle2,
   Cpu,
   Download,
+  FolderOpen,
+  HardDrive,
   Info,
   Languages,
   Loader2,
@@ -29,7 +31,7 @@ import {
   PAPER_LATIN,
   SCALE_CHOICES,
 } from '../theme'
-import type { EngineInfo, EngineInstallState, Settings as SettingsType } from '../types'
+import type { DataDirectoryInfo, EngineInfo, EngineInstallState, Settings as SettingsType } from '../types'
 
 const EFFORT_OPTIONS = [
   { value: 'default', label: '默认' },
@@ -294,6 +296,10 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [saved, setSaved] = useState(false)
+  const [dataDir, setDataDir] = useState<DataDirectoryInfo | null>(null)
+  const [dataDraft, setDataDraft] = useState('')
+  const [dataBusy, setDataBusy] = useState(false)
+  const [dataResult, setDataResult] = useState<{ ok: boolean; message: string } | null>(null)
 
   const [engines, setEngines] = useState<{ docling: EngineInfo; mineru: EngineInfo } | null>(null)
   const [install, setInstall] = useState<Record<string, EngineInstallState>>({})
@@ -320,6 +326,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     api.settings().then(setS)
+    api.dataDirectory().then((info) => {
+      setDataDir(info)
+      setDataDraft(info.path)
+    })
     refreshEngines()
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -380,6 +390,39 @@ export default function SettingsPage() {
       alert(String(e instanceof Error ? e.message : e))
     }
     refreshEngines()
+  }
+
+  const changeDataDirectory = async (useExisting = false) => {
+    const path = dataDraft.trim()
+    if (!path || !dataDir) return
+    const prompt = useExisting
+      ? `切换到已有数据目录？\n${path}\n\n应用需要重启后生效。`
+      : `把当前数据库、文档和引擎复制到新目录？\n${path}\n\n原目录会保留，应用需要重启后生效。`
+    if (!window.confirm(prompt)) return
+    setDataBusy(true)
+    setDataResult(null)
+    try {
+      const result = await api.setDataDirectory(path, useExisting)
+      setDataResult({
+        ok: true,
+        message: result.restart_required
+          ? `数据目录已设置为 ${result.path}。请完全退出并重新打开 PaperLoom。`
+          : '当前已经在使用这个数据目录。',
+      })
+    } catch (e) {
+      setDataResult({ ok: false, message: String(e instanceof Error ? e.message : e) })
+    } finally {
+      setDataBusy(false)
+    }
+  }
+
+  const openDataDirectory = async () => {
+    setDataResult(null)
+    try {
+      await api.openDataDirectory()
+    } catch (e) {
+      setDataResult({ ok: false, message: String(e instanceof Error ? e.message : e) })
+    }
   }
 
   return (
@@ -683,6 +726,63 @@ export default function SettingsPage() {
               {s.engine === 'mineru' ? 'MinerU' : 'Docling'}
             </span>
           </p>
+        </Section>
+
+        {/* ── 数据目录 ── */}
+        <Section
+          icon={HardDrive}
+          title="数据目录"
+          desc="数据库、PDF、批注、设置和转换引擎都保存在这里。修改后需重启应用。"
+        >
+          <div className="space-y-3.5">
+            <Field
+              label="数据存储路径"
+              hint={dataDir ? `默认路径：${dataDir.default_path}` : '正在读取…'}
+            >
+              <input
+                className="pl-input font-mono text-[12.5px]"
+                value={dataDraft}
+                onChange={(e) => setDataDraft(e.target.value)}
+                placeholder="C:\\Users\\用户名\\AppData\\Local\\PaperLoom\\data"
+                disabled={!dataDir || dataBusy}
+              />
+            </Field>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="pl-btn pl-btn-primary"
+                onClick={() => changeDataDirectory(false)}
+                disabled={!dataDir || dataBusy || !dataDraft.trim()}
+              >
+                {dataBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <HardDrive className="h-4 w-4" />}
+                迁移并使用
+              </button>
+              <button
+                className="pl-btn pl-btn-ghost"
+                onClick={() => changeDataDirectory(true)}
+                disabled={!dataDir || dataBusy || !dataDraft.trim()}
+                title="切换到包含 paperloom.db 的已有数据目录，不复制当前数据"
+              >
+                使用已有目录
+              </button>
+              <button className="pl-btn pl-btn-ghost" onClick={openDataDirectory} disabled={!dataDir}>
+                <FolderOpen className="h-4 w-4" />
+                打开当前目录
+              </button>
+            </div>
+
+            {dataResult && (
+              <div
+                className={`rounded-btn border px-3.5 py-2.5 text-[12.5px] leading-relaxed ${
+                  dataResult.ok
+                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                    : 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400'
+                }`}
+              >
+                {dataResult.message}
+              </div>
+            )}
+          </div>
         </Section>
 
         {/* ── 外观 ── */}

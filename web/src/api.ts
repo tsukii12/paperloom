@@ -1,4 +1,4 @@
-import type { Annotation, AnnColor, AnnKind, Block, DocMeta, EngineInfo, EngineInstallState, Settings } from './types'
+import type { Annotation, AnnColor, AnnKind, Block, DataDirectoryInfo, DocMeta, EngineInfo, EngineInstallState, Settings } from './types'
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) {
@@ -56,6 +56,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(s),
     }).then(j<Settings>),
+
+  dataDirectory: () => fetch('/api/data-directory').then(j<DataDirectoryInfo>),
+
+  setDataDirectory: (path: string, useExisting = false) =>
+    fetch('/api/data-directory', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, use_existing: useExisting }),
+    }).then(j<{ ok: boolean; path: string; restart_required: boolean }>),
+
+  openDataDirectory: () =>
+    post('/api/data-directory/open').then(j<{ ok: boolean }>),
 
   testSettings: (settings: Pick<Settings, 'base_url' | 'api_key' | 'model'>) =>
     post('/api/settings/test', settings).then(j<{ ok: boolean; message: string }>),

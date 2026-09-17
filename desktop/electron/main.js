@@ -14,7 +14,34 @@ const RES = isPackaged
   : path.resolve(__dirname, '..', '..')
 
 const APP_DIR = isPackaged ? path.join(RES, 'paperloom') : RES
-const LOG_FILE = path.join(APP_DIR, 'data', 'backend.log')
+// 从 MSIX/沙箱宿主启动时，继承的 LOCALAPPDATA 可能被虚拟化到宿主的
+// Packages/.../LocalCache。普通桌面程序的数据不能落在那里，检测到后退回
+// 当前用户配置文件下真正的 AppData/Local；非虚拟环境仍尊重 LOCALAPPDATA。
+const inheritedLocal = process.env.LOCALAPPDATA || ''
+const localIsVirtualized = inheritedLocal.includes(`${path.sep}Packages${path.sep}`)
+  && inheritedLocal.includes(`${path.sep}LocalCache${path.sep}`)
+const packagesMarker = `${path.sep}AppData${path.sep}Local${path.sep}Packages${path.sep}`
+const packagesAt = inheritedLocal.toLowerCase().indexOf(packagesMarker.toLowerCase())
+const LOCAL_APP_DATA = process.platform === 'win32'
+  ? (localIsVirtualized && packagesAt >= 0
+      ? inheritedLocal.slice(0, packagesAt) + `${path.sep}AppData${path.sep}Local`
+      : (inheritedLocal || path.join(app.getPath('home'), 'AppData', 'Local')))
+  : (process.env.XDG_DATA_HOME || path.join(app.getPath('home'), '.local', 'share'))
+const USER_ROOT = path.join(LOCAL_APP_DATA, 'PaperLoom')
+const LOCATION_FILE = path.join(USER_ROOT, 'data-location.json')
+
+function configuredDataDir() {
+  if (process.env.PAPERLOOM_DATA_DIR) return path.resolve(process.env.PAPERLOOM_DATA_DIR)
+  try {
+    const saved = JSON.parse(fs.readFileSync(LOCATION_FILE, 'utf-8'))
+    if (saved.data_dir) return path.resolve(saved.data_dir)
+  } catch {}
+  return path.join(USER_ROOT, 'data')
+}
+
+const DATA_DIR = configuredDataDir()
+const LEGACY_DATA_DIR = path.join(APP_DIR, 'data')
+const LOG_FILE = path.join(DATA_DIR, 'backend.log')
 
 let pyProc = null
 let weSpawned = false
@@ -39,6 +66,18 @@ function tailLog(n = 12) {
   } catch {
     return '(没有日志)'
   }
+}
+
+/** 0.8.5 及更早版本把数据写在安装资源目录。目标为空时复制到用户目录，
+ *  原目录保留不删，避免迁移中断造成数据丢失。 */
+function migrateLegacyData() {
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+  if (path.resolve(DATA_DIR) === path.resolve(LEGACY_DATA_DIR)) return
+  if (!fs.existsSync(LEGACY_DATA_DIR)) return
+  const meaningful = fs.readdirSync(DATA_DIR).filter((name) => name !== 'backend.log')
+  if (meaningful.length || fs.readdirSync(LEGACY_DATA_DIR).length === 0) return
+  fs.cpSync(LEGACY_DATA_DIR, DATA_DIR, { recursive: true, force: false })
+  appendLog(`[migration] 已从旧目录复制数据:${LEGACY_DATA_DIR}`)
 }
 
 function serverUp() {
@@ -101,9 +140,17 @@ async function ensureServer() {
     return false
   }
 
-  fs.mkdirSync(path.join(APP_DIR, 'data'), { recursive: true })
+  try {
+    migrateLegacyData()
+  } catch (e) {
+    dialog.showErrorBox(
+      'PaperLoom 数据迁移失败',
+      `${e.message}\n\n旧目录:${LEGACY_DATA_DIR}\n新目录:${DATA_DIR}`,
+    )
+    return false
+  }
   appendLog(`\n===== ${new Date().toISOString()} 启动后端 =====`)
-  appendLog(`exe=${exe}\ncwd=${cwd}`)
+  appendLog(`exe=${exe}\ncwd=${cwd}\ndata=${DATA_DIR}`)
 
   const out = fs.openSync(LOG_FILE, 'a')
   pyProc = spawn(
@@ -111,7 +158,12 @@ async function ensureServer() {
     ['-X', 'utf8', '-m', 'uvicorn', 'server.app:app', '--host', '127.0.0.1', '--port', String(PORT)],
     {
       cwd,
-      env: { ...process.env, ...env, PYTHONUTF8: '1' },
+      env: {
+        ...process.env,
+        ...env,
+        PYTHONUTF8: '1',
+        PAPERLOOM_DATA_DIR: DATA_DIR,
+      },
       windowsHide: true,
       stdio: ['ignore', out, out], // 后端输出落盘,超时才有东西可查
     },

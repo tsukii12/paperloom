@@ -8,13 +8,13 @@
 """
 from __future__ import annotations
 
-import pathlib
 import queue
 import threading
 import traceback
 
 from . import db
 from .converter.base import ConversionCancelled, convert_pdf, load_blocks, save_blocks
+from .paths import DOCS_DIR
 from .translator import TransCancelled, translate_blocks
 
 _q_convert: "queue.Queue[tuple]" = queue.Queue()
@@ -92,9 +92,15 @@ def request_cancel(doc_id: str) -> bool:
     return True
 
 
+def has_active_jobs() -> bool:
+    """数据目录切换前使用：有排队或执行中的任务时禁止迁移。"""
+    with _lock:
+        return bool(_pending)
+
+
 def _run_convert(doc_id: str, opts: dict) -> None:
     engine = opts.get("engine") or db.get_doc(doc_id)["engine"] or "docling"
-    doc_dir = pathlib.Path(__file__).resolve().parent.parent / "data" / "docs" / doc_id
+    doc_dir = DOCS_DIR / doc_id
     pdf = doc_dir / "origin.pdf"
     db.update_doc(doc_id, status="converting", progress=0.0, stage="准备中", error="")
     db.append_log(doc_id, f"开始转换 · 引擎 {engine}")
@@ -129,7 +135,7 @@ def _run_convert(doc_id: str, opts: dict) -> None:
 
 
 def _run_translate(doc_id: str, opts: dict) -> None:
-    doc_dir = pathlib.Path(__file__).resolve().parent.parent / "data" / "docs" / doc_id
+    doc_dir = DOCS_DIR / doc_id
     engine, blocks = load_blocks(doc_dir)
     db.update_doc(doc_id, status="translating", progress=0.0, stage="准备翻译", error="")
     db.append_log(doc_id, "开始翻译")

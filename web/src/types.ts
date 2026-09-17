@@ -84,6 +84,12 @@ export interface Settings {
   pypi_index: string
 }
 
+export interface DataDirectoryInfo {
+  path: string
+  default_path: string
+  location_file: string
+}
+
 export interface EngineInfo {
   installed: boolean
   version: string

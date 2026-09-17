@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import json
 import threading
-from pathlib import Path
+from .paths import SETTINGS_PATH
 
-_PATH = Path(__file__).resolve().parent.parent / "data" / "settings.json"
+_PATH = SETTINGS_PATH
 _LOCK = threading.Lock()
 
 DEFAULTS = {

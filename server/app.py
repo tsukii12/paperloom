@@ -26,20 +26,26 @@ from fastapi.concurrency import run_in_threadpool
 
 from . import db, jobs
 from .converter.base import ConversionError, convert_pdf, load_blocks
+from .paths import (
+    DATA_DIR,
+    DEFAULT_DATA_DIR,
+    DOCS_DIR,
+    ENGINES_DIR,
+    LOCATION_FILE,
+    TRASH_DIR,
+    ensure_data_dir,
+    normalize_data_dir,
+    save_data_location,
+)
 from .render import render_standalone
 from .settings import get_settings, save_settings
 from .translator import translate_selection
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
-DOCS_DIR = DATA_DIR / "docs"
-TRASH_DIR = DATA_DIR / "trash"
 WEB_DIST = ROOT / "web" / "dist"
 
 # 转换引擎按需安装:torch/docling/mineru 合计数 GB,不随安装包分发,
 # 用户点「下载安装」后装进这里(用户可写目录),再挂到 sys.path。
-ENGINES_DIR = DATA_DIR / "engines"
-
 ENGINES = {"docling": "Docling(轻量快速)", "mineru": "MinerU(学术质量最佳)"}
 
 
@@ -119,6 +125,7 @@ def _pypi_index() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ensure_data_dir()
     db.init_db()
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
     sync_engine_paths()  # 已下载的转换引擎要在本进程里可导入
@@ -659,6 +666,63 @@ def read_settings():
 @app.put("/api/settings")
 def write_settings(patch: dict):
     return save_settings(patch or {})
+
+
+@app.get("/api/data-directory")
+def get_data_directory():
+    return {
+        "path": str(DATA_DIR),
+        "default_path": str(DEFAULT_DATA_DIR),
+        "location_file": str(LOCATION_FILE),
+    }
+
+
+@app.put("/api/data-directory")
+def set_data_directory(body: dict):
+    """复制当前数据并保存下次启动使用的目录。运行中不热切换数据库。"""
+    if jobs.has_active_jobs() or any(s.get("running") for s in ENGINE_INSTALL.values()):
+        raise HTTPException(409, "有转换、翻译或引擎安装任务正在运行，请完成后再迁移")
+    try:
+        target = normalize_data_dir((body or {}).get("path"))
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    current = Path(os.path.abspath(DATA_DIR))
+    if target == current:
+        return {"ok": True, "path": str(current), "restart_required": False}
+    if current in target.parents or target in current.parents:
+        raise HTTPException(400, "新旧数据目录不能互相包含")
+    if target.exists() and not target.is_dir():
+        raise HTTPException(400, "目标路径不是文件夹")
+    target.mkdir(parents=True, exist_ok=True)
+
+    use_existing = bool((body or {}).get("use_existing"))
+    existing = list(target.iterdir())
+    if existing and not use_existing:
+        raise HTTPException(409, "目标目录不是空目录；请选择空目录，或确认使用其中已有的 PaperLoom 数据")
+    if use_existing and not (target / "paperloom.db").is_file():
+        raise HTTPException(400, "所选目录中没有 paperloom.db，不是有效的 PaperLoom 数据目录")
+    if not use_existing:
+        try:
+            shutil.copytree(current, target, dirs_exist_ok=True)
+        except Exception as e:
+            raise HTTPException(500, f"迁移数据失败：{e}") from e
+    save_data_location(target)
+    return {"ok": True, "path": str(target), "restart_required": True}
+
+
+@app.post("/api/data-directory/open")
+def open_data_directory():
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(DATA_DIR))  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(DATA_DIR)])
+        else:
+            subprocess.Popen(["xdg-open", str(DATA_DIR)])
+    except Exception as e:
+        raise HTTPException(500, f"无法打开数据目录：{e}") from e
+    return {"ok": True}
 
 
 def _message_text(message: dict) -> str:
